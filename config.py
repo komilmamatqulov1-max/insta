@@ -1,0 +1,8 @@
+TOKEN = "YANGI_TOKENING"
+
+ADMINS = [7258610754]
+
+BOT_NAME = "YouTube Save"
+
+DB_NAME = "database.db"
+TOKEN = "8642947454:AAETPmRmNior5GVeaAUV4GwusamwUnILMWE"
