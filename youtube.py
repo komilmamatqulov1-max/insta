@@ -26,7 +26,6 @@ def get_video_info_fallback(url: str):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
@@ -42,6 +41,7 @@ async def get_video_info(url: str):
 
     title = info.get('title', 'YouTube Video')
     vid_id = info.get('id', 'unknown')
+    thumbnail = info.get('thumbnail', None)
 
     formats = info.get('formats', [])
     available_heights_in_video = set()
@@ -52,7 +52,6 @@ async def get_video_info(url: str):
         if h and vcodec and vcodec != 'none':
             available_heights_in_video.add(h)
 
-    # Siz so'ragan aniq standart qadamlar ro'yxati
     target_steps = [144, 240, 360, 480, 720, 1080, 1440, 2160]
     found_heights = []
 
@@ -69,7 +68,8 @@ async def get_video_info(url: str):
     return {
         "title": title,
         "height_sizes": found_heights,
-        "video_id": vid_id
+        "video_id": vid_id,
+        "thumbnail": thumbnail
     }
 
 async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -87,7 +87,8 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         msg = await context.bot.send_message(
             chat_id=user_id,
-            text="🔎 Video tahlil qilinmoqda...",
+            text="🔍 <b>Qidirilmoqda...</b>\n<i>Video ma'lumotlari tahlil qilinmoqda, ozgina sabr qiling ⚡️</i>",
+            parse_mode="HTML",
             link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
 
@@ -95,14 +96,14 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not info or not info.get("height_sizes"):
             await msg.edit_text(
-                "❌ Videoni tahlil qilib bo'lmadi. Havolani tekshiring.",
+                "❌ <b>Xatolik!</b>\nVideoni tahlil qilib bo'lmadiki yoki havolada muammo bor. Tekshirib qaytadan yuboring.",
+                parse_mode="HTML",
                 link_preview_options=LinkPreviewOptions(is_disabled=True)
             )
             return
 
         vid_id = info["video_id"]
         USER_DATA_CACHE[f"{user_id}_{vid_id}"] = text
-
         available_heights = info["height_sizes"]
 
         keyboard = []
@@ -110,13 +111,15 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for h in available_heights:
             if h == 1440:
-                label = "2K ⭐️"
+                label = "✨ 2K (Ultra)"
             elif h == 2160:
-                label = "4K ⭐️"
+                label = "🔥 4K (Max)"
             elif h >= 1080:
-                label = f"{h}p ⭐️"
+                label = f"⭐ {h}p (Full HD)"
+            elif h >= 720:
+                label = f"💻 {h}p (HD)"
             else:
-                label = f"{h}p"
+                label = f"📱 {h}p (Mini)"
 
             callback_data = f"dl_{vid_id}_{h}"
             row.append(InlineKeyboardButton(label, callback_data=callback_data))
@@ -130,8 +133,9 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         caption = (
             f"🎬 <b>{info['title']}</b>\n\n"
-            f"📥 Kerakli yuklab olish sifatini tanlang:\n"
-            f"<i>(⭐️ 1080p va undan yuqori sifatlar uchun Premium talab qilinadi)</i>"
+            f"🎯 <i>Sifatni tanlang (past sifatlar tez va yengil, yuqorilari esa juda tiniq yuklanadi):</i>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"⭐️ <i>1080p va undan yuqori sifatlar uchun Premium talab etiladi.</i>"
         )
 
         await msg.edit_text(
@@ -142,11 +146,16 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Promo-kod tekshiruvi
     promo_result = check_and_use_promo(user_id, text)
     if "🎉" in promo_result:
         await update.message.reply_text(promo_result)
     else:
-        await update.message.reply_text("⚠️ Iltimos, to'g'ri YouTube havola yoki faol promo-kod yuboring!")
+        await update.message.reply_text(
+            "⚠️ <b>Noto'g'ri buyruq yoki havola!</b>\n"
+            "Iltimos, to'g'ri YouTube havolasini yoki faol promo-kodni yuboring.",
+            parse_mode="HTML"
+        )
 
 async def download_and_send_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -158,7 +167,7 @@ async def download_and_send_video(update: Update, context: ContextTypes.DEFAULT_
 
     parts = data.split("_")
     if len(parts) < 3 or not parts[2].isdigit():
-        await query.answer("❌ Xatolik: Eskirgan tugma.", show_alert=True)
+        await query.answer("❌ Xatolik: Tugma eskirgan yoki yaroqsiz.", show_alert=True)
         return
 
     vid_id = parts[1]
@@ -171,30 +180,30 @@ async def download_and_send_video(update: Update, context: ContextTypes.DEFAULT_
         await query.answer(f"⭐️ {display_name} sifati faqat Premium foydalanuvchilar uchun!", show_alert=True)
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"⭐️ <b>{display_name}</b> uchun Premium obuna kerak!",
+            text=f"⭐️ <b>{display_name}</b> sifatini yuklab olish uchun sizga Premium obuna kerak!",
             parse_mode="HTML"
         )
         return
 
-    await query.answer()
+    await query.answer("🚀 Yuklab olish jarayoni boshlandi...")
 
     cache_key = f"{user_id}_{vid_id}"
     url = USER_DATA_CACHE.get(cache_key, f"https://www.youtube.com/watch?v={vid_id}")
 
     status_msg = await context.bot.send_message(
         chat_id=user_id,
-        text=f"⚡️ <b>{display_name}</b> sifatdagi video yuklanmoqda...",
+        text=f"⏳ <b>{display_name}</b> format tayyorlanmoqda...\n<i>Server videoni yuklab olmoqda, biroz kuting ☕️</i>",
         parse_mode="HTML"
     )
 
     output_filename = f"video_{user_id}_{height}_{vid_id}.mp4"
 
     def _download_task():
-        # 1080p va undan yuqori sifatlar uchun moslashuvchan format (FFmpeg orqali birlashtiradi)
-        if height >= 1080:
-            format_string = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+        # Siz xohlagan mantiq: 720p va pastiga 'best', yuqorilarga 'bestvideo+bestaudio'
+        if height <= 720:
+            format_string = f'best[height<={height}]/worst'
         else:
-            format_string = f"best[height<={height}]/best"
+            format_string = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best'
 
         ydl_opts = {
             'format': format_string,
@@ -223,29 +232,31 @@ async def download_and_send_video(update: Update, context: ContextTypes.DEFAULT_
         success = await loop.run_in_executor(None, _download_task)
 
         if not success or not os.path.exists(output_filename):
-            await status_msg.edit_text("❌ Videoni yuklab bo'lmadi. Havolani yoki formatni tekshiring.")
+            await status_msg.edit_text("❌ <b>Xatolik!</b>\nVideoni yuklab bo'lmadi. Havola yopiq yoki format mavjud emas.")
             return
 
-        file_size_mb = os.path.getsize(output_filename) / (1024 * 1024)
+        file_size_bytes = os.path.getsize(output_filename)
+        file_size_mb = file_size_bytes / (1024 * 1024)
 
         if file_size_mb > 2000:
-            await status_msg.edit_text(f"⚠️ Video hajmi juda katta ({file_size_mb:.1f} MB).")
+            await status_msg.edit_text(f"⚠️ <b>Kechirasiz, video hajmi juda katta ({file_size_mb:.1f} MB).</b>\nTelegram cheklovi tufayli 2GB dan katta videolarni yubora olmaymiz.")
             os.remove(output_filename)
             return
 
-        await status_msg.edit_text("📤 Video Telegram'ga yuborilmoqda...")
+        await status_msg.edit_text("📤 <b>Video yuborilmoqda...</b>\n<i>Telegram serveriga yuklanmoqda, marhamat kutib turing 🚀</i>", parse_mode="HTML")
 
         with open(output_filename, 'rb') as video_file:
             await context.bot.send_video(
                 chat_id=user_id,
                 video=video_file,
-                caption=f"✅ Video muvaffaqiyatli yuklab olindi! ({display_name})"
+                caption=f"✅ <b>Muvaffaqiyatli yuklab olindi!</b>\n🎯 Sifat: <b>{display_name}</b> | Hajmi: <b>{file_size_mb:.1f} MB</b>",
+                parse_mode="HTML"
             )
 
         await status_msg.delete()
 
     except Exception as e:
-        await status_msg.edit_text(f"❌ Xatolik: <code>{e}</code>", parse_mode="HTML")
+        await status_msg.edit_text(f"❌ <b>Kutilmagan xatolik yuz berdi:</b>\n<code>{e}</code>", parse_mode="HTML")
 
     finally:
         if os.path.exists(output_filename):
